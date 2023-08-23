@@ -21,6 +21,7 @@ using namespace std;
 #define FETCH_INT4(pointer) (reinterpret_cast<int4*>(&(pointer))[0])
 #define FETCH_INT32(pointer) (reinterpret_cast<int*>(&(pointer))[0])
 #define MAX_BLOCK_THREAD_COUNT 1024
+#define FULL_MASK 0xffffffff
 
 #define CUBLAS_SAFE_CALL(func)                                                                  \
     do                                                                                          \
