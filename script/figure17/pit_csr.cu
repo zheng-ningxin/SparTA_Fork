@@ -152,6 +152,64 @@ void convert_csr_fine(int * mask, float* dense, int h, int w,
     convert_bcsr_kernel_fine_1<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
     convert_bcsr_kernel_fine_2<<<grid_dim, block_dim>>>(mask, dense, h, w, block_h, block_w, row, col, values, extra_buffer);
 }
+
+// template<
+//     const int H,
+//     const int W,
+//     const int BLOCKDIM
+// >
+// __global__ void convert_bcsr_kernel_fine_2_template( int * __restrict__  mask, float * __restrict__  dense, int * row, int *col, float * values, int * extra_buffer)
+// {
+//     uint tid = threadIdx.x;
+//     uint wid = tid/32;
+//     uint wtid = tid%32;
+//     uint by = blockIdx.x;
+//     const int row_stride = BLOCKDIM / 32;
+//     const int rid = wid + by * row_stride; // row id
+//     assert(blockDim.x==BLOCKDIM);
+//     int prefix_sum;
+//     if (wtid%32==0){
+//         prefix_sum = 0;
+//         #pragma unroll
+//         for(int i=0; i<rid; i++)
+//             prefix_sum += extra_buffer[i];
+//         row[rid] = prefix_sum;
+//     }
+//     prefix_sum = __shfl_sync(FULL_MASK, prefix_sum, 0);
+//     // __syncthreads();
+//     #pragma unroll
+//     for(int round=0; round<W/32/4; round++){
+//         int _pos_start = round*32*4+wtid*4;
+//         int4 mask4 = FETCH_INT4(mask[rid*W+_pos_start]);
+//         int * p_mask = (int*)&mask4;
+//         #pragma unroll 
+//         for(int i=0; i<4; i++){
+//             if(p_mask[i]>0){
+//                 int tmp = atomicSub(&extra_buffer[rid+H], 1);
+//                 tmp-=1;
+//                 col[prefix_sum+tmp] = _pos_start+i;
+//                 values[prefix_sum+tmp] = dense[rid*W+_pos_start+i];
+//             }
+//         }
+//     }
+
+// }
+
+// void convert_csr_fine_template(int * mask, float* dense, int h, int w,
+//                         int * row, int * col,
+//                         float * values, int * extra_buffer)
+// {
+//     if(h==4096 && w==4096){
+//         const int threads = 512;
+//         const int block_h = threads/32;
+//         dim3 block_dim(512);
+//         dim3 grid_dim_1(h);
+//         dim3 grid_dim_2(h/block_h);
+//         convert_bcsr_kernel_fine_1<<<grid_dim_1, block_dim>>>(mask, dense, h, w, 1, 1, row, col, values, extra_buffer);
+//         convert_bcsr_kernel_fine_2_template<4096, 4096, 512><<<grid_dim_2, block_dim>>>(mask, dense, row, col, values, extra_buffer);
+//     }
+// }
+
 template<
     const int H,
     const int W,
@@ -160,47 +218,42 @@ template<
 __global__ void convert_bcsr_kernel_fine_2_template( int * __restrict__  mask, float * __restrict__  dense, int * row, int *col, float * values, int * extra_buffer)
 {
     uint tid = threadIdx.x;
-    uint wid = tid/32;
-    uint wtid = tid%32;
     uint by = blockIdx.x;
-    const int row_stride = BLOCKDIM / 32;
-    const int rid = wid + by * row_stride; // row id
-    assert(blockDim.x==BLOCKDIM);
-    int prefix_sum;
-    if (wtid%32==0){
+    __shared__ int prefix_sum;
+    if (tid==0){
         prefix_sum = 0;
-        #pragma unroll
-        for(int i=0; i<rid; i++)
+        for(int i=0; i<by; i++)
             prefix_sum += extra_buffer[i];
-        row[rid] = prefix_sum;
+        row[by] = prefix_sum;
     }
-    prefix_sum = __shfl_sync(FULL_MASK, prefix_sum, 0);
-    // __syncthreads();
+    __syncthreads();
     #pragma unroll
-    for(int round=0; round<W/32/4; round++){
-        int _pos_start = round*32*4+wtid*4;
-        int4 mask4 = FETCH_INT4(mask[rid*W+_pos_start]);
-        int * p_mask = (int*)&mask4;
-        #pragma unroll 
-        for(int i=0; i<4; i++){
-            if(p_mask[i]>0){
-                int tmp = atomicSub(&extra_buffer[rid+H], 1);
-                tmp-=1;
-                col[prefix_sum+tmp] = _pos_start+i;
-                values[prefix_sum+tmp] = dense[rid*W+_pos_start+i];
-            }
+    for(int round=0; round<W/BLOCKDIM; round++){
+        int _pos = tid + round * BLOCKDIM;
+        if(mask[by*W+_pos]>0){
+            int tmp = atomicSub(&extra_buffer[by+H], 1);
+            tmp-=1;
+            col[prefix_sum+tmp] = _pos;
+            values[prefix_sum+tmp] = dense[by*W+_pos];
         }
     }
+    // for(int _pos=tid; _pos<w; _pos+=blockDim.x){
+    //     if(mask[by*w+_pos]>0){
+    //         int tmp = atomicSub(&extra_buffer[by+H], 1);
+    //         tmp-=1;
+    //         col[prefix_sum+tmp] = _pos;
+    //         values[prefix_sum+tmp] = dense[by*W+_pos];
+    //     }
+    // }
 
 }
-
 void convert_csr_fine_template(int * mask, float* dense, int h, int w,
                         int * row, int * col,
                         float * values, int * extra_buffer)
 {
     if(h==4096 && w==4096){
         const int threads = 512;
-        const int block_h = threads/32;
+        const int block_h = 1;
         dim3 block_dim(512);
         dim3 grid_dim_1(h);
         dim3 grid_dim_2(h/block_h);
