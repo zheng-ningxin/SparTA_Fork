@@ -77,6 +77,6 @@ void init_mask_blockwise(int * mask, float * value, size_t M, size_t N, int bloc
         }
         
     }
-    printf("random %d blocks in init_mask_blockwise\n", block_nnz);
+    //printf("random %d blocks in init_mask_blockwise\n", block_nnz);
 
 }

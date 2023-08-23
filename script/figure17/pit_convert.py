@@ -48,11 +48,11 @@ def test_correctness():
 
 if __name__ == '__main__':
     # test_correctness()
-    with open('convert.csv', 'w') as f:
+    with open('convert.csv', 'a') as f:
         f.write('h,w,block_h,block_w,sparsity,t_avg\n')
         writer = csv.writer(f, delimiter=',')
         for h, w in [(4096, 4096)]:
-            for block_h, block_w in [(1,1), (16,16), (32,32)]:
+            for block_h, block_w in [ (16,16), (32,32)]:
             # for block_h, block_w in [(1,1)]:
                 for sparsity in [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 0.95, 0.99]:
                     t_avg = test(h, w, block_h, block_w, sparsity)
